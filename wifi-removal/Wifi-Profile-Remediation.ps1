@@ -11,6 +11,7 @@ $FoundProfiles = netsh wlan show profiles
 #Check if the profile has gone and exit 0
 If ($FoundProfiles -Match $ProfileName) {
     Write-Host "Profile is still in the system!"
+    Exit 1
 }
 Else {
     Write-Host "Profile has been removed"
