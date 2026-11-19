@@ -1,0 +1,3 @@
+# Don't include the settings folder, which contains our files
+Autopilot/Settings/*
+Autopilot/Certificates/*
