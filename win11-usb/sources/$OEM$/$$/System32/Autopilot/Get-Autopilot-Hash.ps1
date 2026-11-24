@@ -4,7 +4,38 @@ $GroupTag = "StudentLoan"
 $Timezone = "AUS Eastern Standard Time"
 $InternetAttempts = 5 # How many times to attempt to connect to the internet before giving up and dropping you to Edge for captive portal stuff
 $SSID = "Lavalla BYOD" # SSID to connect to
-$ShutdownTimeout = 10 # How long to wait until the computer shuts down
+$RestartTimeout = 10 # How long to wait until the computer shuts down
+$UploadToMicrosoft = $True # If true, will automatically upload the hash to Microsoft. If false, will save to a local file instead
+$TmpCSVFile = "D:\tmp.csv" # Where the interim hash will be saved (if $UploadToMicrosoft is false)
+$AutopilotCSVFile = "D:\Autopilot.csv" # Where the final, ready to upload autopilot CSV will be saved (if $UploadToMicrosoft is false)
+
+Try {
+    . .\Autopilot\Credentials.ps1 # Load in our credentials from another file. They are "dot sourced" so they're essentially imported into this script. 
+}
+Catch {
+    Write-Error "Autopilot\Credentials.ps1 not found! Make sure the file exists, and try again"
+    Exit
+}
+
+
+# Looks for imported credentials to make sure the script will run properly. 
+function Test-Credentials {
+
+    $varsToTest = @(
+        "TenantID",
+        "AppID",
+        "AppSecret"
+    )
+
+    $validVars = Get-Variable -Name $varsToTest -ErrorAction SilentlyContinue | Where-Object {
+        -not [string]::IsNullOrWhiteSpace($_.Value)
+    }
+
+    if ($validVars.Count -ne $varsToTest.Count) {
+        Write-Host "One or more variables are missing. Make sure that Credentials.ps1 exists and that it contains valid TenantID, AppID and AppSecret"
+    }
+
+}
 
 # Import the internet certificate, used to try and ensure a good connection to the internet
 function Import-InternetCertificate {
@@ -79,12 +110,20 @@ function Test-InternetConnection {
     Return $false
 }
 
+# Get the hardware hash and upload it to Microsoft using the credentials stored in Credentials.ps1
 function Get-Hash {
-    param($TempFile = "D:\tmp.csv", $FinalFile = "D:\Autopilot.csv")
-    # Run the AutopilotInfo script with our group tag and computer name. Save the file to a temporary file
-    & .\Get-WindowsAutopilotInfo.ps1 -GroupTag $GroupTag -ComputerName $env:computername -OutputFile $TempFile -Append
-    # Convert the file into ASCII, as the Intune portal has troubles with the file otherwise
-    Get-Content -Path D:\tmp.csv | Out-File -FilePath $FinalFile -Encoding ascii
+    param($TempFile = "D:\tmp.csv", $FinalFile = "D:\Autopilot.csv", $Upload = $True)
+    
+    if($Upload -eq $True) {
+        Write-Host "Retrieving hash and uploading to Microsoft.."
+        & .\Get-WindowsAutopilotInfo.ps1 -GroupTag $GroupTag -ComputerName $env:computername -Online -Assign -TenantId $TenantID -AppId $AppID -AppSecret $AppSecret
+    } else {
+        Write-Host "Retrieving host and saving to D:\Autopilot.csv.."
+        & .\Get-WindowsAutopilotInfo.ps1 -GroupTag $GroupTag -ComputerName $env:computername -OutputFile $TempFile -Append
+        # Convert the file into ASCII, as the Intune portal has troubles with the file otherwise
+        Get-Content -Path $TempFile | Out-File -FilePath $FinalFile -Encoding ascii
+    }
+        
 }
 
 # Set the timezone to avoid "Your time is incorrectly set!" errors
@@ -97,6 +136,26 @@ function Set-CurrentTime {
     Write-Host "Time is now $(Get-Date)"
 }
 
+# Removes this script and the additional files
+function Remove-Temporary-Files {
+    # A list of files to cleanup. This is to ensure we don't accidentally leave sensitive files behind
+    $WindowsPath = "C:\Windows\System32"
+
+    $FilesToDelete = @(
+        "$WindowsPath\Autopilot",
+        "$WindowsPath\Lavalla-OOBE.bat"
+    )
+    
+    Remove-Item -Path $FilesToDelete -Recurse -Force # Delete the files
+    $WasDeleted = Test-Path -Path $FilesToDelete # Make sure the files are actually deleted
+    
+    if (@($WasDeleted -ne $false).Count -gt 0) {
+        Write-Error -Message "Unable to clean up files. Please make sure the following files are deleted: " + $FilesToDelete
+    }
+
+}
+
+Test-Credentials # Make sure we've got credentials for adding to Autopilot automatically
 
 Try {
     # Import the internet certificate
@@ -152,14 +211,23 @@ Catch {
     Exit
 }
 
-Write-Host "Getting Autopilot hash and saving to D:\autopilot.csv"
+Write-Host "Getting Autopilot hash.."
 Try {
-    Get-Hash
+    Get-Hash -TempFile $TmpCSVFile -FinalFile $AutopilotCSVFile -Upload $UploadToMicrosoft
 }
 Catch {
     Write-Error "Unable to get Autopilot information: $_"
+    Exit
 }
 
-Write-Host "Shutting down in $ShutdownTimeout seconds. Press Ctrl+C to stop" -ForegroundColor yellow
-Start-Sleep -Seconds $ShutdownTimeout
-Stop-Computer
+Try {
+    Remove-Temporary-Files
+}
+Catch {
+    Write-Error "Unable to delete temporary scripts. Please delete $PSCommandPath and the Autopilot folder from C:\Windows\System32"
+    Exit
+}
+
+Write-Host "Restarting laptop in $RestartTimeout seconds. Press Ctrl+C to stop" -ForegroundColor yellow
+Start-Sleep -Seconds $RestartTimeout
+Restart-Computer

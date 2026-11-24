@@ -1,3 +1,4 @@
 # Don't include the settings folder, which contains our files
-Autopilot/Settings/*
-Autopilot/Certificates/*
+sources/$OEM$/$$/System32/Autopilot/Settings/*
+sources/$OEM$/$$/System32/Autopilot/Certificates/*
+sources/$OEM$/$$/System32/Autopilot/Credentials.ps1

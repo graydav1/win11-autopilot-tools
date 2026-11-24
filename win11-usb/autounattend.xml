@@ -23,7 +23,7 @@
 				</ProductKey>
 				<AcceptEula>true</AcceptEula>
 			</UserData>
-			<UseConfigurationSet>false</UseConfigurationSet>
+			<UseConfigurationSet>true</UseConfigurationSet>
 			<RunSynchronous>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>1</Order>
