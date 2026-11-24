@@ -1,0 +1,3 @@
+$TenantID = ""
+$AppID = ""
+$AppSecret = ""
